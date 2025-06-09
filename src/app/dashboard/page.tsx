@@ -633,12 +633,7 @@ export default function DashboardPage() {
     return { pieData, lineChartData };
   };
 
-  const getFilteredTransactions = (plan: Plan, mod: Module) => {
-    return mod.transactions.filter((log: Transaction) =>
-      (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
-      (!filterType || log.type === filterType)
-    );
-  };
+ 
 
   const filteredCalendarTransactions = useMemo((): CalendarTransaction[] => {
     if (!selectedDate) return [];
@@ -649,7 +644,7 @@ export default function DashboardPage() {
           (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
           (!filterType || log.type === filterType) &&
           log.date === selectedDate.toISOString().slice(0, 10)
-        ).map((log: Transaction, i: number): CalendarTransaction => ({
+        ).map((log: Transaction): CalendarTransaction => ({
           ...log,
           plan: plan.name,
           module: mod.name,
