@@ -375,7 +375,11 @@ export default function DashboardPage() {
         currentMod.balance -= amount;
         updatedPlans[txnPlanIdx].totalBalance -= amount; // Deduct from overall plan balance
       } else {
-        currentMod.balance += amount;
+        // Distribute income across all modules based on their percentage
+        updatedPlans[txnPlanIdx].modules.forEach((module: Module) => {
+          const distributedAmount = amount * (module.percentage / 100);
+          module.balance += distributedAmount;
+        });
         updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
       }
 
@@ -648,7 +652,12 @@ export default function DashboardPage() {
     return { pieData, lineChartData };
   };
 
- 
+  const getFilteredTransactions = (plan: Plan, mod: Module) => {
+    return mod.transactions.filter((log: Transaction) =>
+      (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
+      (!filterType || log.type === filterType)
+    );
+  };
 
   const filteredCalendarTransactions = useMemo((): CalendarTransaction[] => {
     if (!selectedDate) return [];
@@ -659,7 +668,7 @@ export default function DashboardPage() {
           (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
           (!filterType || log.type === filterType) &&
           log.date === selectedDate.toISOString().slice(0, 10)
-        ).map((log: Transaction): CalendarTransaction => ({
+        ).map((log: Transaction, i: number): CalendarTransaction => ({
           ...log,
           plan: plan.name,
           module: mod.name,
