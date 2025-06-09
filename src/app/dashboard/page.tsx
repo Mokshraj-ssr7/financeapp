@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import Papa from "papaparse";
@@ -263,11 +263,17 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleModuleChange = (idx: number, field: keyof Module, value: string | number) => {
+  const handleModuleChange = (idx: number, field: 'type' | 'name' | 'percentage' | 'color', value: string | number) => {
     setModules(prev => {
       const newModules = [...prev];
-      // Type assertion needed because Module[field] can be a narrower type than string | number
-      (newModules[idx] as any)[field] = value;
+      const updatedModule = { ...newModules[idx] };
+
+      if (field === 'percentage') {
+        updatedModule[field] = value as number;
+      } else { // 'type', 'name', 'color'
+        updatedModule[field] = value as string;
+      }
+      newModules[idx] = updatedModule;
       return newModules;
     });
   };
@@ -612,13 +618,10 @@ export default function DashboardPage() {
 
   const getModuleChartData = (module: Module) => {
     const expenseTransactions = module.transactions.filter(t => t.type === 'expense');
-    const incomeTransactions = module.transactions.filter(t => t.type === 'income');
 
     const totalExpenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
 
     // Data for Pie Chart (Allocation vs. Usage)
-    const allocated = module.percentage * plans.find(p => p.modules.some(m => m.id === module.id))!.totalBalance / 100; // This might need more robust lookup
 
     // Ensure labels are numbers and greater than 0
     const pieData = [
@@ -634,15 +637,12 @@ export default function DashboardPage() {
       }
       if (txn.type === 'expense') {
         dailyData[txn.date].expenses += txn.amount;
-      } else {
-        dailyData[txn.date].income += txn.amount;
       }
     });
 
     const lineChartData = Object.keys(dailyData).sort().map(date => ({
       date,
       expenses: dailyData[date].expenses,
-      income: dailyData[date].income,
     }));
 
     return { pieData, lineChartData };
@@ -926,7 +926,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {plan.modules.map((mod: any, mi: number) => (
+              {plan.modules.map((mod: Module, mi: number) => (
                 <Card key={mi} className="p-3 sm:p-4 flex flex-col gap-2 border-2 overflow-x-auto" style={{ borderColor: mod.color }}>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-4 h-4 rounded-full" style={{ background: mod.color }} />
