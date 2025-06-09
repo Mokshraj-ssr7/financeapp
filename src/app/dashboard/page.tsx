@@ -171,6 +171,7 @@ export default function DashboardPage() {
   const [txnOpen, setTxnOpen] = useState(false);
   const [txnType, setTxnType] = useState<'expense' | 'income'>("expense");
   const [txnPlanIdx, setTxnPlanIdx] = useState<number | null>(null);
+  const [txnModIdx, setTxnModIdx] = useState<number | null>(null);
   const [txnTitle, setTxnTitle] = useState("");
   const [txnAmount, setTxnAmount] = useState("");
   const [txnDate, setTxnDate] = useState("");
@@ -333,9 +334,10 @@ export default function DashboardPage() {
     setError("");
   };
 
-  const openTxnModal = (type: 'expense' | 'income', planIdx: number) => {
+  const openTxnModal = (type: 'expense' | 'income', planIdx: number, modIdx: number) => {
     setTxnType(type);
     setTxnPlanIdx(planIdx);
+    setTxnModIdx(modIdx);
     setTxnOpen(true);
     setTxnTitle("");
     setTxnAmount(""); // Set to empty string for input
@@ -352,21 +354,34 @@ export default function DashboardPage() {
     }
 
     const updatedPlans = [...plans];
-    if (txnPlanIdx !== null) {
+    if (txnPlanIdx !== null && txnModIdx !== null) {
+      const currentMod = updatedPlans[txnPlanIdx].modules[txnModIdx];
       const amount = parseFloat(txnAmount);
 
-      // Distribute income across all modules based on their percentage
-      updatedPlans[txnPlanIdx].modules.forEach((module: Module) => {
-        const distributedAmount = amount * (module.percentage / 100);
-        module.balance += distributedAmount;
-      });
+      const newTransaction: Transaction = {
+        id: `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: txnType,
+        title: txnTitle,
+        amount,
+        date: txnDate,
+        description: txnDesc,
+        currencySymbol: currencySymbol,
+      };
 
-      updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
+      currentMod.transactions = currentMod.transactions ? [...currentMod.transactions] : [];
+      currentMod.transactions.unshift(newTransaction);
+
+      if (txnType === "expense") {
+        currentMod.balance -= amount;
+        updatedPlans[txnPlanIdx].totalBalance -= amount; // Deduct from overall plan balance
+      } else {
+        currentMod.balance += amount;
+        updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
+      }
 
       setPlans(updatedPlans);
       localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
 
-      // Reset transaction modal fields
       setTxnOpen(false);
       setTxnTitle("");
       setTxnAmount("");
@@ -633,7 +648,12 @@ export default function DashboardPage() {
     return { pieData, lineChartData };
   };
 
- 
+  const getFilteredTransactions = (plan: Plan, mod: Module) => {
+    return mod.transactions.filter((log: Transaction) =>
+      (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
+      (!filterType || log.type === filterType)
+    );
+  };
 
   const filteredCalendarTransactions = useMemo((): CalendarTransaction[] => {
     if (!selectedDate) return [];
@@ -644,7 +664,7 @@ export default function DashboardPage() {
           (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
           (!filterType || log.type === filterType) &&
           log.date === selectedDate.toISOString().slice(0, 10)
-        ).map((log: Transaction): CalendarTransaction => ({
+        ).map((log: Transaction, i: number): CalendarTransaction => ({
           ...log,
           plan: plan.name,
           module: mod.name,
@@ -916,8 +936,8 @@ export default function DashboardPage() {
                   <div className="text-2xl font-bold mb-1">{currencySymbol}{mod.balance.toLocaleString()}</div>
                   <div className="text-xs text-muted-foreground mb-2">{mod.percentage}% of plan</div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openTxnModal('expense', pi)}>Add Expense</Button>
-                    <Button size="sm" variant="outline" onClick={() => openTxnModal('income', pi)}>Add Income</Button>
+                    <Button size="sm" variant="outline" onClick={() => openTxnModal('expense', pi, mi)}>Add Expense</Button>
+                    <Button size="sm" variant="outline" onClick={() => openTxnModal('income', pi, mi)}>Add Income</Button>
                     <div className="flex gap-2 ml-auto">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
