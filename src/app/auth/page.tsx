@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { User } from "@/lib/types";
 
 const CURRENCIES = [
   { symbol: "$", name: "USD" },
@@ -22,9 +23,9 @@ export default function AuthPage() {
       setError("Please fill in all fields.");
       return;
     }
-    const users = JSON.parse(localStorage.getItem("finaceapp_users") || "[]");
+    const users: User[] = JSON.parse(localStorage.getItem("finaceapp_users") || "[]");
     if (isLogin) {
-      const user = users.find((u: any) => u.email === email && u.password === password);
+      const user = users.find((u: User) => u.email === email && u.password === password);
       if (!user) {
         setError("Invalid email or password.");
         return;
@@ -32,11 +33,11 @@ export default function AuthPage() {
       localStorage.setItem("finaceapp_current_user", JSON.stringify(user));
       window.location.href = "/dashboard";
     } else {
-      if (users.find((u: any) => u.email === email)) {
+      if (users.find((u: User) => u.email === email)) {
         setError("User already exists. Please login.");
         return;
       }
-      const newUser = { email, password, currency };
+      const newUser: User = { email, password, currency };
       users.push(newUser);
       localStorage.setItem("finaceapp_users", JSON.stringify(users));
       localStorage.setItem("finaceapp_current_user", JSON.stringify(newUser));
