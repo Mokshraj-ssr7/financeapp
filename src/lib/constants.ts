@@ -1,5 +1,3 @@
-import { Input } from "@/components/ui/input";
-
 export const CURRENCIES = [
   { symbol: "$", name: "USD" },
   { symbol: "₹", name: "INR" },
