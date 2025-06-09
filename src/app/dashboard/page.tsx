@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
@@ -9,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import Papa from "papaparse";
 import jsPDF from "jspdf";
 import { Switch } from "@/components/ui/switch";
@@ -17,6 +15,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { useRouter } from "next/navigation";
 import { CURRENCIES } from "@/lib/constants";
 import { motion } from "framer-motion";
+import { User, Plan, Module, Transaction, TrendDataPoint, CalendarTransaction } from "@/lib/types";
+import { Input } from "@/components/ui/input";
 
 const MODULE_TYPES = [
   "expense",
@@ -89,13 +89,27 @@ const MONEY_TIPS = [
   "Review your investment portfolio regularly."
 ];
 
-const CustomTooltip = ({ active, payload, currencySymbol }: any) => {
+interface ChartPayload {
+  name: string;
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: {
+    payload: ChartPayload;
+    value: number;
+  }[];
+  currencySymbol: string;
+}
+
+const CustomTooltip = ({ active, payload, currencySymbol }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     if (typeof data.value !== 'number' || !isFinite(data.value)) {
       return null;
     }
-    const total = payload.reduce((sum: number, entry: any) => sum + entry.value, 0);
+    const total = payload.reduce((sum: number, entry: { value: number }) => sum + entry.value, 0);
     const percentage = total > 0 ? (data.value / total) * 100 : 0;
 
     return (
@@ -108,7 +122,16 @@ const CustomTooltip = ({ active, payload, currencySymbol }: any) => {
   return null;
 };
 
-const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+interface CustomizedLabelProps {
+  cx: number;
+  cy: number;
+  midAngle: number;
+  innerRadius: number;
+  outerRadius: number;
+  percent: number;
+}
+
+const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: CustomizedLabelProps) => {
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
   const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
@@ -134,9 +157,9 @@ export default function DashboardPage() {
   const [planName, setPlanName] = useState("");
   const [totalBalance, setTotalBalance] = useState("");
   const [numModules, setNumModules] = useState(1);
-  const [modules, setModules] = useState<any[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
   const [error, setError] = useState("");
-  const [plans, setPlans] = useState<any[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [collab, setCollab] = useState(false);
 
   // State for header blur effect
@@ -159,7 +182,7 @@ export default function DashboardPage() {
   const [editModOpen, setEditModOpen] = useState(false);
   const [editPlanIdx, setEditPlanIdx] = useState<number | null>(null);
   const [editModIdx, setEditModIdx] = useState<number | null>(null);
-  const [editMod, setEditMod] = useState<any>(null);
+  const [editMod, setEditMod] = useState<Module | null>(null);
   const [editError, setEditError] = useState("");
 
   // Add state for saving goal modal
@@ -178,14 +201,14 @@ export default function DashboardPage() {
 
   // Add state for calendar view
   const [calendarView, setCalendarView] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   // Add state for search and filter
   const [search, setSearch] = useState("");
-  const [filterType, setFilterType] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<"expense" | "income" | null>(null);
 
   // Add state for current user
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currencySymbol, setCurrencySymbol] = useState("$");
 
   const router = useRouter();
@@ -199,75 +222,103 @@ export default function DashboardPage() {
   useEffect(() => {
     const user = localStorage.getItem("finaceapp_current_user");
     if (user) {
-      const parsedUser = JSON.parse(user);
+      const parsedUser: User = JSON.parse(user);
       setCurrentUser(parsedUser);
       const selectedCurrency = CURRENCIES.find(c => c.name === parsedUser.currency);
-      if (selectedCurrency) setCurrencySymbol(selectedCurrency.symbol);
-      // Select a random tip on login/dashboard load
-      setRandomTip(MONEY_TIPS[Math.floor(Math.random() * MONEY_TIPS.length)]);
+      if (selectedCurrency) {
+        setCurrencySymbol(selectedCurrency.symbol);
+      }
+    } else {
+      router.push("/");
     }
-  }, []);
+  }, [router]);
 
+  // Handle header scroll blur effect
   useEffect(() => {
     const handleScroll = () => {
-      const isScrolled = window.scrollY > 0;
-      if (isScrolled !== scrolled) {
-        setScrolled(isScrolled);
+      if (window.scrollY > 0) {
+        setScrolled(true);
+      } else {
+        setScrolled(false);
       }
     };
+
     window.addEventListener("scroll", handleScroll);
     return () => {
       window.removeEventListener("scroll", handleScroll);
     };
-  }, [scrolled]);
+  }, []);
 
-  // Step 2: module details
-  const handleModuleChange = (idx: number, field: string, value: any) => {
+  // Money tip effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const randomIndex = Math.floor(Math.random() * MONEY_TIPS.length);
+      setRandomTip(MONEY_TIPS[randomIndex]);
+    }, 15000); // Change tip every 15 seconds
+
+    // Set initial tip
+    const initialRandomIndex = Math.floor(Math.random() * MONEY_TIPS.length);
+    setRandomTip(MONEY_TIPS[initialRandomIndex]);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleModuleChange = (idx: number, field: keyof Module, value: string | number) => {
     setModules(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      return next;
+      const newModules = [...prev];
+      // Type assertion needed because Module[field] can be a narrower type than string | number
+      (newModules[idx] as any)[field] = value;
+      return newModules;
     });
   };
 
   const handleStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!planName || !totalBalance || numModules < 1) {
-      setError("Please fill all fields.");
+    if (!planName || parseFloat(totalBalance) <= 0) {
+      setError("Please enter a valid plan name and a total balance greater than 0.");
       return;
     }
-    setModules(
-      Array.from({ length: numModules }, (_, i) => ({
-        type: MODULE_TYPES[0],
-        name: "",
-        percentage: 0,
-        color: COLOR_PALETTE[i % COLOR_PALETTE.length],
-      }))
-    );
+    setModules(Array.from({ length: numModules }, (_, i) => ({
+      type: "expense",
+      name: `Module ${i + 1}`,
+      percentage: numModules === 1 ? 100 : 0,
+      color: COLOR_PALETTE[i % COLOR_PALETTE.length],
+      id: `new-module-${Date.now()}-${i}`,
+      balance: 0,
+      transactions: [],
+    })));
     setStep(2);
     setError("");
   };
 
   const handleStep2 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const totalPercent = modules.reduce((sum, m) => sum + Number(m.percentage), 0);
-    if (totalPercent !== 100) {
-      setError("Total percentage must be 100%.");
+    if (modules.length === 0) {
+      setError("Please add at least one module.");
       return;
     }
-    // Save plan to localStorage
-    const plan = {
-      planName,
-      totalBalance: Number(totalBalance),
-      modules: modules.map(m => ({
-        ...m,
-        balance: (Number(totalBalance) * Number(m.percentage)) / 100,
-        logs: [],
-      })),
+    const newPlan: Plan = {
+      id: `plan-${Date.now()}`,
+      name: planName,
+      totalBalance: parseFloat(totalBalance),
+      modules: modules.map((module: Module, i) => {
+        const newModule: Module = {
+          id: `module-${Date.now()}-${i}`,
+          type: module.type,
+          name: module.name,
+          percentage: parseFloat(module.percentage.toString()), // Ensure percentage is number
+          color: module.color || COLOR_PALETTE[i % COLOR_PALETTE.length],
+          balance: (parseFloat(totalBalance) * parseFloat(module.percentage.toString())) / 100, // Ensure percentage is number
+          transactions: [],
+          savingGoal: module.type === "saving" ? 0 : undefined,
+          emergencyThreshold: module.type === "emergency" ? 0 : undefined,
+        };
+        return newModule;
+      }),
     };
-    const storedPlans = JSON.parse(localStorage.getItem("finaceapp_plans") || "[]");
-    const updatedPlans = [...storedPlans, plan];
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+
+    setPlans(prev => [...prev, newPlan]);
+    localStorage.setItem("finaceapp_plans", JSON.stringify([...plans, newPlan]));
     setOpen(false);
     setStep(1);
     setPlanName("");
@@ -275,241 +326,354 @@ export default function DashboardPage() {
     setNumModules(1);
     setModules([]);
     setError("");
-    window.location.reload();
   };
 
   const openTxnModal = (type: 'expense' | 'income', planIdx: number, modIdx: number) => {
     setTxnType(type);
     setTxnPlanIdx(planIdx);
     setTxnModIdx(modIdx);
+    setTxnOpen(true);
     setTxnTitle("");
-    setTxnAmount("");
-    setTxnDate("");
+    setTxnAmount(""); // Set to empty string for input
+    setTxnDate(new Date().toISOString().slice(0, 10)); // Set current date as default string
     setTxnDesc("");
     setTxnError("");
-    setTxnOpen(true);
   };
 
   const handleTxnSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!txnTitle || !txnAmount || !txnDate) {
-      setTxnError("Please fill in all required fields.");
+      setTxnError("Please fill in all transaction fields.");
       return;
     }
-    if (txnPlanIdx === null || txnModIdx === null) return;
 
     const updatedPlans = [...plans];
-    const currentPlan = { ...updatedPlans[txnPlanIdx] };
-    const updatedModules = [...currentPlan.modules];
-    const currentMod = { ...updatedModules[txnModIdx] };
+    if (txnPlanIdx !== null && txnModIdx !== null) {
+      const currentMod = updatedPlans[txnPlanIdx].modules[txnModIdx];
+      const amount = parseFloat(txnAmount);
 
-    const amt = Number(txnAmount);
+      const newTransaction: Transaction = {
+        id: `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: txnType,
+        title: txnTitle,
+        amount,
+        date: txnDate,
+        description: txnDesc,
+        currencySymbol: currencySymbol,
+      };
 
-    if (txnType === "expense" && amt > currentMod.balance) {
-      setTxnError("Insufficient balance in module.");
-      return;
+      currentMod.transactions = currentMod.transactions ? [...currentMod.transactions] : [];
+      currentMod.transactions.unshift(newTransaction);
+
+      if (txnType === "expense") {
+        currentMod.balance -= amount;
+        updatedPlans[txnPlanIdx].totalBalance -= amount; // Deduct from overall plan balance
+      } else {
+        currentMod.balance += amount;
+        updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
+      }
+
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+
+      setTxnOpen(false);
+      setTxnTitle("");
+      setTxnAmount("");
+      setTxnDate("");
+      setTxnDesc("");
+      setTxnError("");
     }
-
-    // Add log
-    currentMod.logs = currentMod.logs ? [...currentMod.logs] : [];
-    currentMod.logs.unshift({
-      type: txnType,
-      title: txnTitle,
-      amount: amt,
-      date: txnDate,
-      description: txnDesc,
-    });
-
-    // Update balances
-    if (txnType === "expense") {
-      currentMod.balance -= amt;
-      currentPlan.totalBalance -= amt;
-    } else {
-      currentMod.balance += amt;
-      currentPlan.totalBalance += amt;
-    }
-
-    console.log("Updated module balance:", currentMod.balance);
-    console.log("Updated plan total balance:", currentPlan.totalBalance);
-
-    updatedModules[txnModIdx] = currentMod;
-    currentPlan.modules = updatedModules;
-    updatedPlans[txnPlanIdx] = currentPlan;
-
-    setPlans(updatedPlans);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
-    setTxnOpen(false);
   };
 
-  // Plan actions
   const handleDeletePlan = (idx: number) => {
-    const updated = plans.filter((_: any, i: number) => i !== idx);
-    setPlans(updated);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updated));
+    if (window.confirm("Are you sure you want to delete this plan? This action cannot be undone.")) {
+      const updatedPlans = plans.filter((_, i) => i !== idx);
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+    }
   };
-  const handleExportCSV = (plan: any) => {
-    const csv = Papa.unparse(plan.modules.flatMap((mod: any) => mod.logs.map((log: any) => ({
-      plan: plan.planName,
+
+  const handleExportCSV = (plan: Plan) => {
+    const csv = Papa.unparse(plan.modules.flatMap((mod: Module) => mod.transactions.map((log: Transaction) => ({
+      plan: plan.name,
       module: mod.name,
       type: log.type,
       title: log.title,
       amount: log.amount,
       date: log.date,
-      description: log.description,
+      description: log.description || "",
     }))));
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${plan.planName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `${plan.name}-data.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
-  const handleExportPDF = (plan: any) => {
+
+  const handleExportPDF = (plan: Plan) => {
     const doc = new jsPDF();
-    doc.text(`Plan: ${plan.planName}`, 10, 10);
-    let y = 20;
-    plan.modules.forEach((mod: any) => {
+    let y = 10;
+
+    doc.setFontSize(18);
+    doc.text(`Financial Plan: ${plan.name}`, 10, y);
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Total Balance: ${currencySymbol}${plan.totalBalance.toFixed(2)}`, 10, y);
+    y += 10;
+
+    plan.modules.forEach((mod: Module) => {
+      y += 5;
+      doc.setFontSize(14);
       doc.text(`Module: ${mod.name} (${mod.type})`, 10, y);
       y += 6;
-      mod.logs.forEach((log: any) => {
-        doc.text(`${log.date} - ${log.type} - ${log.title} - $${log.amount} - ${log.description || ""}`, 12, y);
+      mod.transactions.forEach((log: Transaction) => {
+        doc.text(`${log.date} - ${log.type} - ${log.title} - ${currencySymbol}${log.amount.toFixed(2)} - ${log.description || ""}`, 12, y);
         y += 6;
-        if (y > 270) { doc.addPage(); y = 10; }
+        if (y > 280) { // Check if content goes beyond page height
+          doc.addPage();
+          y = 10; // Reset y for new page
+        }
       });
-      y += 4;
     });
-    doc.save(`${plan.planName}.pdf`);
+
+    doc.save(`${plan.name}-report.pdf`);
   };
+
   const handleReset = () => {
-    setPlans([]);
-    localStorage.removeItem("finaceapp_plans");
+    if (window.confirm("Are you sure you want to reset all data? This will delete all plans and transactions.")) {
+      localStorage.removeItem("finaceapp_plans");
+      localStorage.removeItem("finaceapp_current_user");
+      setPlans([]);
+      router.push("/");
+    }
   };
 
   const openEditMod = (planIdx: number, modIdx: number) => {
+    const modToEdit = plans[planIdx].modules[modIdx];
     setEditPlanIdx(planIdx);
     setEditModIdx(modIdx);
-    setEditMod({ ...plans[planIdx].modules[modIdx] });
-    setEditError("");
+    setEditMod(modToEdit);
     setEditModOpen(true);
+    setEditError("");
   };
+
   const handleEditModSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editMod.name || editMod.percentage < 0 || editMod.percentage > 100) {
-      setEditError("Invalid module data.");
+    if (!editMod) return;
+    if (!editMod.name || editMod.percentage === undefined) {
+      setEditError("Please fill in all module fields.");
       return;
     }
-    if (editPlanIdx === null || editModIdx === null) return;
     const updatedPlans = [...plans];
-    updatedPlans[editPlanIdx].modules[editModIdx] = { ...editMod };
-    // Recalculate balances
-    const total = updatedPlans[editPlanIdx].totalBalance;
-    updatedPlans[editPlanIdx].modules.forEach((m: any) => {
-      m.balance = (total * m.percentage) / 100;
-    });
-    setPlans(updatedPlans);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
-    setEditModOpen(false);
+    if (editPlanIdx !== null && editModIdx !== null) {
+      const currentPlan = updatedPlans[editPlanIdx];
+      const originalModule = currentPlan.modules[editModIdx];
+
+      // Calculate the difference in percentage
+      const percentageDiff = editMod.percentage - originalModule.percentage;
+
+      // Update the module properties
+      currentPlan.modules[editModIdx] = {
+        ...originalModule,
+        name: editMod.name,
+        percentage: editMod.percentage,
+        color: editMod.color,
+      };
+
+      // Adjust total balance based on percentage change
+      // This logic assumes balance is directly proportional to percentage of totalBalance
+      // If the balance is derived from transactions, this might need adjustment
+      const totalBalanceChange = (currentPlan.totalBalance * percentageDiff) / 100;
+      currentPlan.modules[editModIdx].balance += totalBalanceChange;
+
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+
+      setEditModOpen(false);
+      setEditMod(null);
+      setEditError("");
+    }
   };
+
   const handleDeleteMod = (planIdx: number, modIdx: number) => {
-    const updatedPlans = [...plans];
-    updatedPlans[planIdx].modules.splice(modIdx, 1);
-    setPlans(updatedPlans);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+    if (window.confirm("Are you sure you want to delete this module? All associated transactions will also be deleted.")) {
+      const updatedPlans = [...plans];
+      const plan = updatedPlans[planIdx];
+      const moduleToDelete = plan.modules[modIdx];
+
+      // Deduct module balance from total plan balance before deleting
+      plan.totalBalance -= moduleToDelete.balance;
+
+      plan.modules = plan.modules.filter((_, i) => i !== modIdx);
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+    }
   };
 
   const openGoalModal = (planIdx: number, modIdx: number, currentGoal: number) => {
     setGoalPlanIdx(planIdx);
     setGoalModIdx(modIdx);
-    setGoalValue(currentGoal || 0);
-    setGoalError("");
+    setGoalValue(currentGoal);
     setGoalOpen(true);
+    setGoalError("");
   };
+
   const handleGoalSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (goalPlanIdx === null || goalModIdx === null) return;
-    if (goalValue < 0 || goalValue > 100) {
-      setGoalError("Goal must be between 0 and 100.");
+    if (goalValue <= 0) {
+      setGoalError("Please enter a valid goal amount.");
       return;
     }
     const updatedPlans = [...plans];
-    updatedPlans[goalPlanIdx].modules[goalModIdx].goal = goalValue;
-    setPlans(updatedPlans);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
-    setGoalOpen(false);
+    if (goalPlanIdx !== null && goalModIdx !== null) {
+      updatedPlans[goalPlanIdx].modules[goalModIdx].savingGoal = goalValue;
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+      setGoalOpen(false);
+      setGoalValue(0);
+      setGoalError("");
+    }
   };
 
   const openEmModal = (planIdx: number, modIdx: number, current: number) => {
     setEmPlanIdx(planIdx);
     setEmModIdx(modIdx);
-    setEmValue(current || 0);
-    setEmError("");
+    setEmValue(current);
     setEmOpen(true);
+    setEmError("");
   };
+
   const handleEmSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (emPlanIdx === null || emModIdx === null) return;
-    if (emValue < 0) {
-      setEmError("Threshold must be positive.");
+    if (emValue <= 0) {
+      setEmError("Please enter a valid threshold amount.");
       return;
     }
     const updatedPlans = [...plans];
-    updatedPlans[emPlanIdx].modules[emModIdx].emThreshold = emValue;
-    setPlans(updatedPlans);
-    localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
-    setEmOpen(false);
+    if (emPlanIdx !== null && emModIdx !== null) {
+      updatedPlans[emPlanIdx].modules[emModIdx].emergencyThreshold = emValue;
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+      setEmOpen(false);
+      setEmValue(0);
+      setEmError("");
+    }
   };
 
-  // Function to get trend data
-  const getTrendData = useCallback(() => {
+  // Function to calculate overall trend data
+  const getOverallTrendData = (plans: Plan[], period: string): TrendDataPoint[] => {
+    const data: { [key: string]: { expenses: number; income: number } } = {};
     const today = new Date();
-    let startDate = new Date();
-
-    switch (trendPeriod) {
+    let daysToConsider = 0;
+    switch (period) {
       case "7days":
-        startDate.setDate(today.getDate() - 7);
+        daysToConsider = 7;
         break;
       case "30days":
-        startDate.setDate(today.getDate() - 30);
+        daysToConsider = 30;
         break;
-      case "6months":
-        startDate.setMonth(today.getMonth() - 6);
-        break;
-      case "12months":
-        startDate.setFullYear(today.getFullYear() - 1);
+      case "90days":
+        daysToConsider = 90;
         break;
       default:
-        startDate.setDate(today.getDate() - 30);
+        daysToConsider = 30;
     }
 
-    const dataMap: { [key: string]: { date: string, expense: number, income: number } } = {};
+    for (let i = 0; i < daysToConsider; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateString = date.toISOString().slice(0, 10);
+      data[dateString] = { expenses: 0, income: 0 };
+    }
 
     plans.forEach(plan => {
-      plan.modules.forEach((mod: any) => {
-        if (mod.logs) {
-          mod.logs.forEach((log: any) => {
-            const logDate = new Date(log.date);
-            if (logDate >= startDate) {
-              const dateKey = log.date; // YYYY-MM-DD
-              if (!dataMap[dateKey]) {
-                dataMap[dateKey] = { date: dateKey, expense: 0, income: 0 };
-              }
-              if (log.type === "expense") {
-                dataMap[dateKey].expense += log.amount;
-              } else if (log.type === "income") {
-                dataMap[dateKey].income += log.amount;
-              }
+      plan.modules.forEach(mod => {
+        mod.transactions.forEach((txn: Transaction) => {
+          if (data[txn.date]) {
+            if (txn.type === "expense") {
+              data[txn.date].expenses += txn.amount;
+            } else if (txn.type === "income") {
+              data[txn.date].income += txn.amount;
             }
-          });
-        }
+          }
+        });
       });
     });
 
-    const sortedDates = Object.keys(dataMap).sort();
-    return sortedDates.map(date => dataMap[date]);
-  }, [plans, trendPeriod]);
+    const sortedDates = Object.keys(data).sort();
+    return sortedDates.map(date => ({
+      date,
+      totalExpenses: data[date].expenses,
+      totalIncome: data[date].income,
+    }));
+  };
 
-  const trendData = useMemo(() => getTrendData(), [getTrendData]);
+  const getModuleChartData = (module: Module) => {
+    const expenseTransactions = module.transactions.filter(t => t.type === 'expense');
+    const incomeTransactions = module.transactions.filter(t => t.type === 'income');
+
+    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+    // Data for Pie Chart (Allocation vs. Usage)
+    const allocated = module.percentage * plans.find(p => p.modules.some(m => m.id === module.id))!.totalBalance / 100; // This might need more robust lookup
+
+    // Ensure labels are numbers and greater than 0
+    const pieData = [
+      { name: 'Used', value: totalExpenses, color: '#FF6B6B' },
+      { name: 'Remaining', value: Math.max(0, module.balance), color: '#6BFF6B' },
+    ].filter(entry => entry.value > 0); // Only include segments with positive values
+
+    // Data for Line Chart (Spending/Income Over Time)
+    const dailyData: { [key: string]: { expenses: number; income: number } } = {};
+    module.transactions.forEach(txn => {
+      if (!dailyData[txn.date]) {
+        dailyData[txn.date] = { expenses: 0, income: 0 };
+      }
+      if (txn.type === 'expense') {
+        dailyData[txn.date].expenses += txn.amount;
+      } else {
+        dailyData[txn.date].income += txn.amount;
+      }
+    });
+
+    const lineChartData = Object.keys(dailyData).sort().map(date => ({
+      date,
+      expenses: dailyData[date].expenses,
+      income: dailyData[date].income,
+    }));
+
+    return { pieData, lineChartData };
+  };
+
+  const getFilteredTransactions = (plan: Plan, mod: Module) => {
+    return mod.transactions.filter((log: Transaction) =>
+      (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
+      (!filterType || log.type === filterType)
+    );
+  };
+
+  const filteredCalendarTransactions = useMemo((): CalendarTransaction[] => {
+    if (!selectedDate) return [];
+
+    return plans.flatMap((plan: Plan) =>
+      plan.modules.flatMap((mod: Module) =>
+        (mod.transactions || []).filter((log: Transaction) =>
+          (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
+          (!filterType || log.type === filterType) &&
+          log.date === selectedDate.toISOString().slice(0, 10)
+        ).map((log: Transaction, i: number): CalendarTransaction => ({
+          ...log,
+          plan: plan.name,
+          module: mod.name,
+          color: mod.color,
+          currencySymbol: currencySymbol,
+        }))
+      )
+    );
+  }, [plans, selectedDate, search, filterType, currencySymbol]);
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-background text-foreground px-1 sm:px-2 md:px-4 pt-16">
@@ -564,18 +728,17 @@ export default function DashboardPage() {
             >
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
-              <option value="6months">Last 6 Months</option>
-              <option value="12months">Last 12 Months</option>
+              <option value="90days">Last 90 Days</option>
             </select>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <LineChart data={getOverallTrendData(plans, trendPeriod)} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <XAxis dataKey="date" fontSize={12} tick={{ fill: 'var(--foreground)' }} />
                 <YAxis fontSize={12} tick={{ fill: 'var(--foreground)' }} />
-                <Tooltip contentStyle={{ background: 'var(--background)', borderColor: 'var(--border)', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'var(--foreground)' }} formatter={(value: number) => `${currencySymbol}${value.toLocaleString()}`} />
-                <Line type="monotone" dataKey="expense" stroke="#FF6B6B" name="Expenses" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="income" stroke="#6BFFB6" name="Income" strokeWidth={2} dot={false} />
+                <Tooltip contentStyle={{ background: 'var(--background)', borderColor: 'var(--border)', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'var(--foreground)' }} formatter={(value: number, name: string) => [`${currencySymbol}${value.toFixed(2)}`, name === "totalIncome" ? "Income" : "Expenses"]} />
+                <Line type="monotone" dataKey="totalExpenses" stroke="#FF6B6B" name="Expenses" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="totalIncome" stroke="#6BFF6B" name="Income" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -680,7 +843,7 @@ export default function DashboardPage() {
             <select
               className="input px-2 py-2 text-sm"
               value={filterType || ""}
-              onChange={e => setFilterType(e.target.value || null)}
+              onChange={e => setFilterType(e.target.value as "expense" | "income" | null)}
             >
               <option value="">All Types</option>
               <option value="expense">Expense</option>
@@ -701,13 +864,13 @@ export default function DashboardPage() {
           <div className="w-full max-w-3xl mx-auto mb-8 px-1 sm:px-0">
             <Calendar
               mode="single"
-              selected={selectedDate ? new Date(selectedDate + 'T00:00:00') : undefined}
-              onSelect={date => setSelectedDate(date ? date.toISOString().slice(0, 10) : null)}
+              selected={selectedDate ? new Date(selectedDate.toISOString().slice(0, 10)) : undefined}
+              onSelect={date => setSelectedDate(date ? date : null)}
               modifiers={{
                 dot: (date: Date) => {
                   return plans.some(plan =>
-                    plan.modules.some((mod: { logs?: { date: string }[] }) =>
-                      mod.logs?.some((log: { date: string }) =>
+                    plan.modules.some((mod: { transactions?: { date: string }[] }) =>
+                      mod.transactions?.some((log: { date: string }) =>
                         log.date === date.toISOString().slice(0, 10)
                       )
                     )
@@ -719,28 +882,22 @@ export default function DashboardPage() {
 
             {selectedDate && (
               <div className="mt-4">
-                <h3 className="text-lg font-semibold mb-2">Transactions on {selectedDate}</h3>
-                <div className="space-y-2">
-                  {plans.flatMap(plan => plan.modules.flatMap((mod: any) => (mod.logs || []).filter((log: any) =>
-                    (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
-                    (!filterType || log.type === filterType) &&
-                    log.date === selectedDate
-                  ).map((log: any, i: number) => ({ ...log, plan: plan.planName, module: mod.name, color: mod.color, currencySymbol: currencySymbol }))))
-                    .map((log: any, i: number) => (
-                      <div key={i} className="p-2 rounded border flex items-center gap-2" style={{ borderColor: log.color }}>
-                        <div className="w-3 h-3 rounded-full" style={{ background: log.color }} />
-                        <span className="font-semibold">{log.title}</span>
-                        <span className="text-xs text-muted-foreground">({log.type})</span>
-                        <span className="ml-auto text-sm">{log.currencySymbol}{log.amount}</span>
-                        <span className="text-xs ml-2">{log.plan} / {log.module}</span>
-                        {log.description && <span className="text-xs text-muted-foreground ml-2">{log.description}</span>}
-                      </div>
-                    ))}
-                  {plans.flatMap(plan => plan.modules.flatMap((mod: any) => (mod.logs || []).filter((log: any) =>
-                    (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
-                    (!filterType || log.type === filterType) &&
-                    log.date === selectedDate
-                  ))).length === 0 && (
+                <h3 className="text-lg font-semibold mb-2">Transactions on {selectedDate.toLocaleDateString()}</h3>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                  {filteredCalendarTransactions.length > 0 ? (
+                    filteredCalendarTransactions.map((log: CalendarTransaction, i: number) => (
+                      <Card key={i} className="p-3 shadow-sm flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: log.type === 'expense' ? '#FF6B6B' : '#6BFF6B' }}></div>
+                          <div>
+                            <p className="font-medium">{log.title}</p>
+                            <p className="text-muted-foreground text-xs">{log.description}</p>
+                          </div>
+                        </div>
+                        <p className="font-semibold">{log.type === "expense" ? "-" : "+"}{log.currencySymbol}{log.amount.toFixed(2)}</p>
+                      </Card>
+                    ))
+                  ) : (
                     <div className="text-muted-foreground text-sm">No transactions for this day.</div>
                   )}
                 </div>
@@ -752,7 +909,7 @@ export default function DashboardPage() {
           <Card key={pi} className="p-6 flex flex-col gap-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
               <div>
-                <h2 className="text-2xl font-bold mb-1">{plan.planName}</h2>
+                <h2 className="text-2xl font-bold mb-1">{plan.name}</h2>
                 <div className="text-muted-foreground text-sm">Total Balance: {currencySymbol}{plan.totalBalance.toLocaleString()}</div>
               </div>
               <div className="flex gap-2 mt-2 md:mt-0">
@@ -794,10 +951,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   {/* Transaction Table */}
-                  {mod.logs && mod.logs.filter((log: any) =>
-                    (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
-                    (!filterType || log.type === filterType)
-                  ).length > 0 && (
+                  {mod.transactions && mod.transactions.length > 0 ? (
                     <div className="mt-4 overflow-x-auto">
                       <Table className="min-w-[500px] md:min-w-0">
                         <TableHeader>
@@ -810,30 +964,31 @@ export default function DashboardPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {(mod.logs as any[]).filter((log: any) =>
+                          {mod.transactions.filter((log: Transaction) =>
                             (!search || log.title.toLowerCase().includes(search.toLowerCase()) || (log.description && log.description.toLowerCase().includes(search.toLowerCase()))) &&
                             (!filterType || log.type === filterType)
-                          ).map((log: any, li: number) => (
-                            <TableRow key={li}>
-                              <TableCell>{log.type}</TableCell>
-                              <TableCell>{log.title}</TableCell>
-                              <TableCell>{currencySymbol}{log.amount}</TableCell>
+                          ).map((log: Transaction, i: number) => (
+                            <TableRow key={i} className="hover:bg-muted/50">
+                              <TableCell className="font-medium">{log.title}</TableCell>
+                              <TableCell>{log.type === "expense" ? "-" : "+"}{currencySymbol}{log.amount.toFixed(2)}</TableCell>
                               <TableCell>{log.date}</TableCell>
-                              <TableCell>{log.description}</TableCell>
+                              <TableCell className="hidden sm:table-cell">{log.description}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
                     </div>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">No transactions logged yet.</p>
                   )}
                   {/* Charts Section */}
-                  {mod.logs && mod.logs.length > 0 && (
+                  {mod.transactions && mod.transactions.length > 0 && (
                     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Line Chart: Spending/Income Over Time */}
                       <div className="h-48 bg-muted rounded-xl flex flex-col items-center justify-center p-2">
                         <div className="text-xs text-muted-foreground mb-1">Spending/Income Over Time</div>
                         <ResponsiveContainer width="100%" height="90%">
-                          <LineChart data={mod.logs.slice().reverse()}>
+                          <LineChart data={mod.transactions.slice().reverse()}>
                             <XAxis dataKey="date" fontSize={10} tick={{ fill: 'var(--foreground)' }} />
                             <YAxis fontSize={10} tick={{ fill: 'var(--foreground)' }} />
                             <Tooltip contentStyle={{ background: 'var(--background)', borderColor: 'var(--border)', borderRadius: 'var(--radius)' }} itemStyle={{ color: 'var(--foreground)' }} />
@@ -852,42 +1007,7 @@ export default function DashboardPage() {
                         <ResponsiveContainer width="100%" height="90%">
                           <PieChart key={`${mod.balance}-${plan.totalBalance}`}>
                             <Pie
-                              data={(() => {
-                                const safeTotalBalance = Number(plan.totalBalance) || 0;
-                                const safeModulePercentage = Number(mod.percentage) || 0;
-                                const safeModuleBalance = Number(mod.balance) || 0;
-
-                                const totalModuleBudget = safeTotalBalance * (safeModulePercentage / 100);
-
-                                if (totalModuleBudget === 0) {
-                                  return [];
-                                }
-
-                                let usedValue = 0;
-                                let availableValue = 0;
-                                let overspentValue = 0;
-
-                                if (safeModuleBalance < 0) { // Overspent scenario
-                                  usedValue = totalModuleBudget;
-                                  overspentValue = Math.abs(safeModuleBalance);
-                                  availableValue = 0;
-                                } else if (safeModuleBalance < totalModuleBudget) { // Partially used
-                                  usedValue = totalModuleBudget - safeModuleBalance;
-                                  availableValue = safeModuleBalance;
-                                  overspentValue = 0;
-                                } else { // Fully available or no spending yet
-                                  usedValue = 0;
-                                  availableValue = totalModuleBudget;
-                                  overspentValue = 0;
-                                }
-
-                                const data = [];
-                                if (usedValue > 0) data.push({ name: 'Used', value: usedValue });
-                                if (availableValue > 0) data.push({ name: 'Available', value: availableValue });
-                                if (overspentValue > 0) data.push({ name: 'Overspent', value: overspentValue });
-
-                                return data;
-                              })()}
+                              data={getModuleChartData(mod).pieData}
                               dataKey="value"
                               nameKey="name"
                               cx="50%"
@@ -898,33 +1018,9 @@ export default function DashboardPage() {
                               labelLine={false}
                               label={renderCustomizedLabel}
                             >
-                              {(() => {
-                                const data = [];
-                                const safeTotalBalance = Number(plan.totalBalance) || 0;
-                                const safeModulePercentage = Number(mod.percentage) || 0;
-                                const safeModuleBalance = Number(mod.balance) || 0;
-                                const totalModuleBudget = safeTotalBalance * (safeModulePercentage / 100);
-
-                                let usedValue = 0;
-                                let availableValue = 0;
-                                let overspentValue = 0;
-
-                                if (safeModuleBalance < 0) {
-                                  usedValue = totalModuleBudget;
-                                  overspentValue = Math.abs(safeModuleBalance);
-                                } else if (safeModuleBalance < totalModuleBudget) {
-                                  usedValue = totalModuleBudget - safeModuleBalance;
-                                  availableValue = safeModuleBalance;
-                                } else {
-                                  usedValue = 0;
-                                  availableValue = totalModuleBudget;
-                                }
-
-                                if (usedValue > 0) data.push(<Cell key="used" fill={mod.color} />);
-                                if (availableValue > 0) data.push(<Cell key="avail" fill="#00E676" />);
-                                if (overspentValue > 0) data.push(<Cell key="overspent" fill="#D32F2F" />);
-                                return data;
-                              })()}
+                              {getModuleChartData(mod).pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
                             </Pie>
                             <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} />
                           </PieChart>
@@ -932,36 +1028,45 @@ export default function DashboardPage() {
                       </motion.div>
                     </div>
                   )}
-                  {mod.type === 'saving' && (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span>Goal:</span>
-                        <span className="font-semibold">{mod.goal || 0}%</span>
-                        <Button size="sm" variant="outline" onClick={() => openGoalModal(pi, mi, mod.goal)}>Set Goal</Button>
-                      </div>
-                      <div className="w-full bg-muted rounded h-2 mt-1">
-                        <div
-                          className="bg-primary rounded h-2"
-                          style={{ width: `${Math.min(100, Math.round((mod.balance / (plan.totalBalance * (mod.goal || 1) / 100)) * 100))}%` }}
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Actual: {Math.round((mod.balance / plan.totalBalance) * 100)}% of plan
-                      </div>
+                  {/* Saving Goal / Emergency Fund Section */}
+                  {mod.type === "saving" && (
+                    <div className="mt-4 p-4 bg-secondary rounded-lg">
+                      <h4 className="text-lg font-semibold mb-2">Saving Goal</h4>
+                      {mod.savingGoal !== undefined && mod.savingGoal > 0 ? (
+                        <>
+                          <p className="text-muted-foreground">Goal: {currencySymbol}{mod.savingGoal.toFixed(2)}</p>
+                          <p className="text-muted-foreground">Progress: {currencySymbol}{mod.balance.toFixed(2)} / {currencySymbol}{mod.savingGoal.toFixed(2)} ({(mod.balance / mod.savingGoal * 100).toFixed(0)}%)</p>
+                        </>
+                      ) : (
+                        <p className="text-muted-foreground">No saving goal set.</p>
+                      )}
+                      <Button
+                        onClick={() => openGoalModal(pi, mi, mod.savingGoal || 0)}
+                        className="mt-2 text-xs"
+                      >
+                        {mod.savingGoal !== undefined && mod.savingGoal > 0 ? "Edit Saving Goal" : "Set Saving Goal"}
+                      </Button>
                     </div>
                   )}
-                  {mod.type === 'emergency' && (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span>Alert Threshold:</span>
-                        <span className="font-semibold">{currencySymbol}{mod.emThreshold || 0}</span>
-                        <Button size="sm" variant="outline" onClick={() => openEmModal(pi, mi, mod.emThreshold)}>Set Alert</Button>
-                      </div>
-                      {mod.balance < (mod.emThreshold || 0) && (
-                        <div className="mt-2 p-2 bg-red-100 text-red-700 rounded text-xs font-semibold">
-                          🚨 Emergency fund below threshold!
-                        </div>
+                  {mod.type === "emergency" && (
+                    <div className="mt-4 p-4 bg-secondary rounded-lg">
+                      <h4 className="text-lg font-semibold mb-2">Emergency Fund</h4>
+                      {mod.emergencyThreshold !== undefined && mod.emergencyThreshold > 0 ? (
+                        <>
+                          <p className="text-muted-foreground">Threshold: {currencySymbol}{mod.emergencyThreshold.toFixed(2)}</p>
+                          {mod.balance < mod.emergencyThreshold && (
+                            <p className="text-red-500 font-bold">Alert: Balance is below emergency threshold!</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-muted-foreground">No emergency threshold set.</p>
                       )}
+                      <Button
+                        onClick={() => openEmModal(pi, mi, mod.emergencyThreshold || 0)}
+                        className="mt-2 text-xs"
+                      >
+                        {mod.emergencyThreshold !== undefined && mod.emergencyThreshold > 0 ? "Edit Threshold" : "Set Threshold"}
+                      </Button>
                     </div>
                   )}
                 </Card>
@@ -1042,6 +1147,86 @@ export default function DashboardPage() {
             {emError && <div className="text-red-500 text-sm">{emError}</div>}
             <Button type="submit" className="w-full mt-2">Save Threshold</Button>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* Overall Calendar View */}
+      <Dialog open={calendarView} onOpenChange={setCalendarView}>
+        <DialogContent className="sm:max-w-[600px] p-6">
+          <DialogHeader>
+            <DialogTitle>Transaction Calendar</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <Calendar
+                mode="single"
+                selected={selectedDate || undefined}
+                onSelect={date => setSelectedDate(date || null)}
+                modifiers={{
+                  dot: (date: Date) => {
+                    return plans.some(plan => plan.modules.some((mod: Module) =>
+                      mod.transactions.some((log: Transaction) => new Date(log.date).toDateString() === date.toDateString())
+                    ));
+                  },
+                }}
+                modifiersStyles={{
+                  dot: {
+                    color: 'var(--primary)',
+                    content: '.',
+                    fontSize: '2rem',
+                    lineHeight: '0.5',
+                    position: 'absolute',
+                    bottom: '5px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                  },
+                }}
+                className="rounded-md border shadow"
+              />
+            </div>
+            <div className="flex-1 flex flex-col">
+              <div className="flex gap-2 mb-4">
+                <Input
+                  type="text"
+                  placeholder="Search transactions..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="flex-1"
+                />
+                <select
+                  className="input px-2 py-2 text-sm"
+                  value={filterType || ""}
+                  onChange={e => setFilterType(e.target.value as "expense" | "income" | null)}
+                >
+                  <option value="">All Types</option>
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </div>
+              {selectedDate && (
+                <div className="mt-4">
+                  <h3 className="text-lg font-semibold mb-2">Transactions on {selectedDate.toLocaleDateString()}</h3>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                    {filteredCalendarTransactions.length > 0 ? (
+                      filteredCalendarTransactions.map((log: CalendarTransaction, i: number) => (
+                        <Card key={i} className="p-3 shadow-sm flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: log.type === 'expense' ? '#FF6B6B' : '#6BFF6B' }}></div>
+                            <div>
+                              <p className="font-medium">{log.title}</p>
+                              <p className="text-muted-foreground text-xs">{log.description}</p>
+                            </div>
+                          </div>
+                          <p className="font-semibold">{log.type === "expense" ? "-" : "+"}{log.currencySymbol}{log.amount.toFixed(2)}</p>
+                        </Card>
+                      ))
+                    ) : (
+                      <div className="text-muted-foreground text-sm">No transactions for this day.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
