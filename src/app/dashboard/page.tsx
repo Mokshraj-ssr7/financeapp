@@ -349,51 +349,34 @@ export default function DashboardPage() {
   const handleTxnSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!txnTitle || !txnAmount || !txnDate) {
-      setTxnError("Please fill in all transaction fields.");
-      return;
+        setTxnError("Please fill in all transaction fields.");
+        return;
     }
 
     const updatedPlans = [...plans];
-    if (txnPlanIdx !== null && txnModIdx !== null) {
-      const currentMod = updatedPlans[txnPlanIdx].modules[txnModIdx];
-      const amount = parseFloat(txnAmount);
+    if (txnPlanIdx !== null) {
+        const amount = parseFloat(txnAmount);
 
-      const newTransaction: Transaction = {
-        id: `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type: txnType,
-        title: txnTitle,
-        amount,
-        date: txnDate,
-        description: txnDesc,
-        currencySymbol: currencySymbol,
-      };
-
-      currentMod.transactions = currentMod.transactions ? [...currentMod.transactions] : [];
-      currentMod.transactions.unshift(newTransaction);
-
-      if (txnType === "expense") {
-        currentMod.balance -= amount;
-        updatedPlans[txnPlanIdx].totalBalance -= amount; // Deduct from overall plan balance
-      } else {
         // Distribute income across all modules based on their percentage
         updatedPlans[txnPlanIdx].modules.forEach((module: Module) => {
-          const distributedAmount = amount * (module.percentage / 100);
-          module.balance += distributedAmount;
+            const distributedAmount = amount * (module.percentage / 100);
+            module.balance += distributedAmount;
         });
+
         updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
-      }
 
-      setPlans(updatedPlans);
-      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+        setPlans(updatedPlans);
+        localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
 
-      setTxnOpen(false);
-      setTxnTitle("");
-      setTxnAmount("");
-      setTxnDate("");
-      setTxnDesc("");
-      setTxnError("");
+        // Reset transaction modal fields
+        setTxnOpen(false);
+        setTxnTitle("");
+        setTxnAmount("");
+        setTxnDate("");
+        setTxnDesc("");
+        setTxnError("");
     }
-  };
+};
 
   const handleDeletePlan = (idx: number) => {
     if (window.confirm("Are you sure you want to delete this plan? This action cannot be undone.")) {
