@@ -14,11 +14,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function AuthPage() {
   const [dark, setDark] = useState(true);
 
   useEffect(() => {
@@ -30,16 +26,15 @@ export default function RootLayout({
   }, [dark]);
 
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <div className="flex items-center justify-center fixed top-4 left-1/2 -translate-x-1/2 z-50 gap-2 p-2 rounded-full bg-background/80 backdrop-blur-sm shadow-sm">
-          <span className="text-xs text-muted-foreground">Dark</span>
-          <Switch checked={dark} onCheckedChange={setDark} />
-        </div>
-        {children}
-      </body>
-    </html>
+    <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <div className="flex items-center justify-center fixed top-4 left-1/2 -translate-x-1/2 z-50 gap-2 p-2 rounded-full bg-background/80 backdrop-blur-sm shadow-sm">
+        <span className="text-xs text-muted-foreground">Dark</span>
+        <Switch checked={dark} onCheckedChange={setDark} />
+      </div>
+      <div>
+        {/* Add your auth form or content here */}
+        <h1>Auth Page</h1>
+      </div>
+    </div>
   );
 }
