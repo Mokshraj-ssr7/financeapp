@@ -171,7 +171,6 @@ export default function DashboardPage() {
   const [txnOpen, setTxnOpen] = useState(false);
   const [txnType, setTxnType] = useState<'expense' | 'income'>("expense");
   const [txnPlanIdx, setTxnPlanIdx] = useState<number | null>(null);
-  const [txnModIdx, setTxnModIdx] = useState<number | null>(null);
   const [txnTitle, setTxnTitle] = useState("");
   const [txnAmount, setTxnAmount] = useState("");
   const [txnDate, setTxnDate] = useState("");
@@ -334,10 +333,9 @@ export default function DashboardPage() {
     setError("");
   };
 
-  const openTxnModal = (type: 'expense' | 'income', planIdx: number, modIdx: number) => {
+  const openTxnModal = (type: 'expense' | 'income', planIdx: number) => {
     setTxnType(type);
     setTxnPlanIdx(planIdx);
-    setTxnModIdx(modIdx);
     setTxnOpen(true);
     setTxnTitle("");
     setTxnAmount(""); // Set to empty string for input
@@ -349,34 +347,34 @@ export default function DashboardPage() {
   const handleTxnSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!txnTitle || !txnAmount || !txnDate) {
-        setTxnError("Please fill in all transaction fields.");
-        return;
+      setTxnError("Please fill in all transaction fields.");
+      return;
     }
 
     const updatedPlans = [...plans];
     if (txnPlanIdx !== null) {
-        const amount = parseFloat(txnAmount);
+      const amount = parseFloat(txnAmount);
 
-        // Distribute income across all modules based on their percentage
-        updatedPlans[txnPlanIdx].modules.forEach((module: Module) => {
-            const distributedAmount = amount * (module.percentage / 100);
-            module.balance += distributedAmount;
-        });
+      // Distribute income across all modules based on their percentage
+      updatedPlans[txnPlanIdx].modules.forEach((module: Module) => {
+        const distributedAmount = amount * (module.percentage / 100);
+        module.balance += distributedAmount;
+      });
 
-        updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
+      updatedPlans[txnPlanIdx].totalBalance += amount; // Add to overall plan balance
 
-        setPlans(updatedPlans);
-        localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
+      setPlans(updatedPlans);
+      localStorage.setItem("finaceapp_plans", JSON.stringify(updatedPlans));
 
-        // Reset transaction modal fields
-        setTxnOpen(false);
-        setTxnTitle("");
-        setTxnAmount("");
-        setTxnDate("");
-        setTxnDesc("");
-        setTxnError("");
+      // Reset transaction modal fields
+      setTxnOpen(false);
+      setTxnTitle("");
+      setTxnAmount("");
+      setTxnDate("");
+      setTxnDesc("");
+      setTxnError("");
     }
-};
+  };
 
   const handleDeletePlan = (idx: number) => {
     if (window.confirm("Are you sure you want to delete this plan? This action cannot be undone.")) {
@@ -923,8 +921,8 @@ export default function DashboardPage() {
                   <div className="text-2xl font-bold mb-1">{currencySymbol}{mod.balance.toLocaleString()}</div>
                   <div className="text-xs text-muted-foreground mb-2">{mod.percentage}% of plan</div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openTxnModal('expense', pi, mi)}>Add Expense</Button>
-                    <Button size="sm" variant="outline" onClick={() => openTxnModal('income', pi, mi)}>Add Income</Button>
+                    <Button size="sm" variant="outline" onClick={() => openTxnModal('expense', pi)}>Add Expense</Button>
+                    <Button size="sm" variant="outline" onClick={() => openTxnModal('income', pi)}>Add Income</Button>
                     <div className="flex gap-2 ml-auto">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
